@@ -1,0 +1,396 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+		<title>rmdf | modeller</title>
+		<script>
+			window.DEBUG = true;
+			window.startScript = Date.now();
+			window.dx9 = (/Windows/.test(navigator.userAgent));
+			window.mobile = (/mobile/i.test(navigator.userAgent));
+			window.shaderURLs = [
+				'rmdf.vert', (window.dx9 || window.mobile) ? 'rmdf_dx9.frag' : 'rmdf.frag'
+			];
+			window.Loader = {
+				cache: {},
+				get: function(files, callback) {
+					var results = [];
+					var count = 0;
+					var ondone = function(i){
+						return function(data) {
+							results[i] = data;
+							count++;
+							if (count === files.length) {
+								if (callback) {
+									callback.apply(null, results);
+								}
+							}
+						}
+					};
+					var self = this;
+					for (var i=0; i<files.length; i++) {
+						var f = this.cache[files[i]];
+						if (f) {
+							if (f.listeners !== undefined) {
+								f.listeners.push(ondone(i));
+							} else {
+								ondone(i)(f);
+							}
+						} else {
+							f = this.cache[files[i]] = {listeners: [ondone(i)]};
+							(function(i){
+								var xhr = new XMLHttpRequest();
+								xhr.open('GET', files[i], true);
+								xhr.onload = function(ev) {
+									var l = self.cache[files[i]].listeners;
+									var f = self.cache[files[i]] = this.responseText;
+									for (var j=0; j<l.length; j++) {
+										l[j](f);
+									}
+								};
+								xhr.send(null);
+							})(i);
+						}
+					}
+				}
+			};
+			Loader.get(shaderURLs);
+		</script>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+			}
+			html,body {
+				margin: 0;
+				padding: 0;
+				overflow: hidden;
+				font-family: 'futura-pt', sans-serif;
+				font-weight: 100;
+				text-align: center;
+				-webkit-perspective: 1200px;
+				width: 100%;
+				height: 100%;
+				background-color: white;
+			}
+			.dg.ac {
+				z-index: 10 !important;
+			}
+			#onclick-editor-container {
+				top: 0px;
+				left: 0px;
+				position: absolute;
+				z-index: 1;
+				margin: 0;
+				text-align: left;
+			}
+			#onclick-editor-container > pre {
+				width: 500px;
+				height: 18px;
+			}
+			#onclick-editor-container > pre.focused {
+				height: 240px;
+			}
+			button {
+				padding: 6px;
+				outline: 0;
+			}
+			#glcanvas {
+				position: absolute;
+				top: 0px;
+				left: 0px;
+				width: 100%;
+				height: 100%;
+			}
+			body:not(.editmode) #onclick-editor-container,
+			body:not(.editmode) .dg.ac
+			{
+				display: none !important;
+			}
+			#edit {
+				transition: 0.5s;
+				opacity: 0;
+				pointer-events: none;				
+			}
+			#edit.visible {
+				opacity: 1;
+				pointer-events: all;
+			}
+			#popup {
+				position: absolute;
+				z-index: 2;
+				/*background-color: rgba(255,255,255, 0.8);*/
+				color: black;
+				width: 200px;
+				top: 80px;
+				left: 100px;
+				transition: 0.5s;
+				left: 50%;
+				top: 50%;
+				opacity: 0;
+				pointer-events: none;
+			}
+			#popup.visible {
+				opacity: 1;
+				pointer-events: all;
+			}
+			#popup .close {
+				position: absolute;
+				left: -33px;
+				top: -27px;
+				width: 40px;
+				height: 40px;
+				background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' height='40' width='40'><line x1='10' y1='10' x2='30' y2='30' style='stroke:black;stroke-width:1;' /><line x1='30' y1='10' x2='10' y2='30' style='stroke:black;stroke-width:1;' /></svg>");
+				cursor: pointer;
+			}
+			#title {
+				z-index: 1;
+				position: absolute;
+				left: 0px;
+				top: 40px;
+				font-size: 80px;
+				font-family: 'futura-pt',sans-serif;
+				font-weight: 100;
+				width: 100%;
+				text-align: center;
+				color: black;
+				pointer-events:none;
+			}
+			h1 {
+				font-size: 80px;
+				font-weight: 100;
+				margin: 0;
+			}
+			h2 {
+				font-weight: 400;
+				margin-bottom: 0.5em;
+			}
+			p {
+				font-size: 14px;
+				margin-bottom: 1em;
+				text-align: justify;
+			}
+			hr {
+				width: 400px;
+				background: black;
+				height: 1px;
+				border: 0px;
+				margin: 15px auto 20px auto;
+				opacity: 0.2;
+			}
+			h3 {
+				font-size: 15px;
+				font-weight: 100;
+				margin: 0;
+				text-transform: uppercase;
+				letter-spacing: 10px;
+				margin-left: 10px;
+			}
+			#shaders {
+				z-index: 2;
+				list-style: none;
+				position: absolute;
+				bottom: 0px;
+				right: 10px;
+				margin: 0;
+				padding: 0;
+				opacity: 0;
+				transition: 1s;
+				vertical-align: top;
+				height: 40px;
+			}
+			#shaders li {
+				vertical-align: top;
+				display: inline-block;
+				margin-left: 4px;
+				padding-top: 6px;
+				margin-bottom: 10px;
+				border-bottom: 4px solid black;
+				color: black;
+				width: 20px;
+				height: 20px;
+				font-size: 11px;
+				text-align: center;
+				cursor: pointer;
+				transition: 0.25s;
+			}
+			#shaders li:hover {
+				background: rgba(255,255,255,0.5);
+				border-bottom: 14px solid black;
+				margin-bottom: 0px;
+			}
+			h1 {
+				font-size:  40px;
+			}
+			hr {
+				width: 200px;
+			}
+			h3 {
+				font-size: 10px;
+			}
+			h1,h3,hr {
+				display: inline-block;
+				margin: 0;
+				padding: 0;
+			}
+			#title {
+				top: 0px;
+			}
+			h1 {
+				position: relative;
+				top: -10px;
+			}
+			h3 {
+				position: relative;
+				top: -16px;
+			}
+			hr {
+				width: 1px;
+				height: 40px;
+				margin-left: 10px;
+				margin-right: 10px;
+			}
+			a {
+				text-decoration: none;
+				color: #000;
+				pointer-events: normal;
+			}
+			#edit {
+				position: absolute;
+				cursor: pointer;
+				-webkit-user-select: none;
+				user-select: none;
+				bottom: 10px;
+				left: 10px;
+				width: 40px;
+				height: 40px;
+				z-index: 3;
+				background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' height='40' width='40'><circle cx='20' cy='20' r='18' style='stroke:black;stroke-width:1;fill:transparent;' /><line x1='25' y1='15' x2='15' y2='25' style='stroke:black;stroke-width:8;stroke-linecap:round;' /></svg>");
+			}
+			rmdf-scene {
+				display: none;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="title">
+			<h1>rmdf</h1>
+			<hr>
+			<h3>modeller</h3>
+		</div>
+		<div id="popup"><h2></h2><div class="content"></div><div class="close"></div></div>
+		<div id="edit"></div>
+<rmdf-scene sun-position="4.523285388946533,0.8382726311683655,-5.664690971374512" sun-color="0.9313725490196079,0.9034421150236334,0.8126682045367166" sky-color="0.19636112807291312,0.22549019607843135,0.19454056132256822" ground-color="0.32352941176470584,0.3018861523848293,0.23154555940023067" horizon-color="1,0.8,0.5" camera-position="5.7814788818359375,-2.087726354598999,5.344484329223633" camera-target="0,0,0" camera-iso="100" camera-exposure-compensation="0" camera-shutter-speed="0.016666666666666666">
+
+<rmdf-ring position="0,0,0" material-transmit="1,0,0" material-diffuse="0" material-emit="0,0,0" height="0.1" radius="1.2" inner-radius="0.9"></rmdf-ring>
+<rmdf-box position="0,-1.2999999523162842,0" material-transmit="0.8999999761581421,0.8999999761581421,0.8999999761581421" material-diffuse="0.15" material-emit="0,0,0" dimensions="1,1,1" corner-radius="0.05"><title>about</title><content><p>Another toy from FHTR Ltd. Follow me on Twitter <a href="http://twitter.com/ilmarihei">@ilmarihei</a> to hear about updates and more hacks.</p></content><onclick>if (this.ival) return;
+var px = this.position[0];
+var py = this.position[1];
+var self = this;
+var t = 0;
+this.ival = setInterval(function() {
+	if (t &gt; 1000) {
+		t = 1000;
+		clearInterval(self.ival);
+		self.ival = null;
+	}
+	self.position[0] = px + (1-t/1000)*Math.sin(Math.PI*2*t/500);
+	self.position[1] = py - (1-Math.cos(Math.PI*2*t/500));
+	self.rotation[0] = t/1000*Math.PI;
+	self.rotation[1] = t/1000*Math.PI;
+	t += 16;
+}, 16);</onclick></rmdf-box>
+
+<rmdf-box position="0,1.2999999523162842,0" material-transmit="0.13725490868091583,0.13725490868091583,0.13725490868091583" material-diffuse="0.15" material-emit="0,0,0" dimensions="1,1,1" corner-radius="0.05"><title>Path tracing</title><content><p>Path tracing is a computer graphics technique that simulates the way light works. For each pixel, shoot out a ray from the eye and bounce it around the scene to collect light.</p><p>Path tracing is computationally intensive but can simulate a wide variety of lighting effects. The path tracing implementation in rmdf is optimized for speed rather than quality, so you'll see some wonky artefacts at times.</p></content><onclick>if (this.ival) return;
+var p = this.rotation[1];
+var self = this;
+var t = 0;
+this.ival = setInterval(function() {
+	if (t &gt; 1000) {
+		t = 1000;
+		clearInterval(self.ival);
+		self.ival = null;
+	}
+	self.rotation[1] = p + (0.5*(1-t/1000)*Math.sin(t/500*Math.PI*2));
+	t += 16;
+}, 16);</onclick></rmdf-box>
+
+<rmdf-torus position="-2.268916606903076,3.548459768295288,2.2059881687164307" material-transmit="1,0.8592848777770996,0.4019607901573181" corner-radius="0.0" boxiness="1.0" rotation="1.59,0,1.59" material-diffuse="0.15" material-emit="0,0,0" inner-radius="0.15" radius="2.2" draggable="true"><title>rmdf | modeller</title><content><p>rmdf | modeller is a tool to build path traced websites out of ray marched distance field objects. Realistic lighting effects and complex procedural objects are within reach!</p><p>The 3D objects are interactive – you can build websites out of them. Add click handlers to change the scene when you click on an object or add HTML content to show on click.</p></content><onclick>if (this.ival) return;
+var p = this.radius;
+var self = this;
+var t = 0;
+this.ival = setInterval(function() {
+	if (t &gt; 1000) {
+		t = 1000;
+		clearInterval(self.ival);
+		self.ival = null;
+	}
+	self.radius = p * (t/1000 + (1-t/1000)*(0.7+0.3*Math.cos(t/500*Math.PI*2)));
+	t += 16;
+}, 16);</onclick></rmdf-torus> -->
+
+</rmdf-scene>
+
+		<script src="gl-matrix.js" async="true"></script>
+		<script src="rmdf.js" async="true"></script>
+
+		<script>
+			(function() {
+				// Overlap random texture creation with loading network assets.
+				var t0 = Date.now();
+				var canvas = document.createElement('canvas');
+				var id = new Uint8Array(256*256*4);
+				id.width=256;
+				id.height=256;
+				for (var y=0; y<256; y++) {
+					for (var x=0; x<256; x++) {
+						var off = (y*256 + x) | 0;
+						var off2 = (((y+17) % 256)*256 + ((x+37) % 256)) | 0;
+						var v = (256 * Math.random()) | 0;
+						id[off*4] = id[off2*4+1] = v;
+						id[off*4+2] = (256 * Math.random()) | 0;
+						id[off*4+3] = (256 * Math.random()) | 0;
+					}
+				}
+				window.randomTex = id;
+				if (DEBUG) console.log('Create random texture: '+(Date.now()-t0)+' ms'); t0 = Date.now();
+				var glc = document.createElement('canvas');
+				glc.id = 'glcanvas';
+				var gl;
+				try {
+					gl = glc.getContext('webgl');
+					if (!gl) { gl = glc.getContext('experimental-webgl'); }
+				} catch (e) {
+					gl = glc.getContext('experimental-webgl');
+				}
+				if (!gl) {
+					return; // no WebGL.
+				}
+				window.gl = gl;
+				window.glc = glc;
+				gl.clearColor(1,1,1,1);
+				var ext = gl.getExtension('OES_texture_float');
+				var vext = gl.getExtension('OES_vertex_texture_fetch');
+				if (DEBUG) console.log('WebGL context creation: '+(Date.now()-t0)+' ms'); t0 = Date.now();
+			})();
+		</script>
+		<script src="dat.gui.js" async="true"></script>
+		<script src="ace/ace.js" charset="utf-8" async="true"></script>
+		<script src="rmdf_editor.js" async="true"></script>
+
+		<script src="//use.typekit.net/svb7vim.js" async="true"></script>
+		<script type="text/javascript">(function(){var t=function(){try{Typekit.load()}catch(e){setTimeout(t,100)}};t()})()</script>
+		<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-40828118-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+	</body>
+</html>
